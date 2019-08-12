@@ -26,8 +26,13 @@ namespace SlimeMoriMoriCompression
         static void Main(string[] args)
         {
             _output = new MemoryStream();
-
             var file = File.OpenRead(@"D:\Users\Kirito\Desktop\compressedBlob1.bin");
+
+            var decoder = new SlimeMoriMoriDecoder();
+            decoder.Decode(file, _output);
+
+            return;
+
             using (var br = new BinaryReaderX(file))
             {
                 var magicValue = br.ReadInt32();
@@ -37,7 +42,7 @@ namespace SlimeMoriMoriCompression
                 // Bit 3 and 4 declare if and how the huffman tree table is initialized
                 byte[] table = null;
                 Func<BinaryReaderX, byte> readValueFunc = null;
-                var what = significant >> 3;
+                var what = (significant >> 3) & 0x3;
                 switch (what)
                 {
                     case 1:

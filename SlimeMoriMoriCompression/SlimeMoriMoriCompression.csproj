@@ -5,10 +5,4 @@
     <TargetFramework>netcoreapp2.2</TargetFramework>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Reference Include="Komponent">
-      <HintPath>D:\Users\Kirito\Desktop\Kuriimu2\dist\Debug\netcoreapp2.1\Komponent.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-
 </Project>
