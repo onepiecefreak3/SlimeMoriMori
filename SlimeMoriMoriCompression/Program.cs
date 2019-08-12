@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Linq.Expressions;
 using Komponent.IO;
 
 namespace SlimeMoriMoriCompression
@@ -26,12 +27,17 @@ namespace SlimeMoriMoriCompression
         static void Main(string[] args)
         {
             _output = new MemoryStream();
-            var file = File.OpenRead(@"D:\Users\Kirito\Desktop\compressedBlob1.bin");
+            var file = File.OpenRead(@"D:\Users\Kirito\Desktop\compressedBlob3.bin");
 
-            var decoder = new SlimeMoriMoriDecoder();
-            decoder.Decode(file, _output);
+            //var decoder = new SlimeMoriMoriDecoder();
+            //decoder.Decode(file, _output);
 
-            return;
+            //var outuptFile2 = File.Create(@"D:\Users\Kirito\Desktop\compressedBlob3.bin.decomp");
+            //_output.Position = 0;
+            //_output.CopyTo(outuptFile2);
+            //outuptFile2.Close();
+
+            //return;
 
             using (var br = new BinaryReaderX(file))
             {
@@ -84,7 +90,7 @@ namespace SlimeMoriMoriCompression
                 ReadData(br, table, significant, magicValue >> 8, readValueFunc, huffmanBits);
             }
 
-            var outuptFile = File.Create(@"D:\Users\Kirito\Desktop\compressedBlob1.bin.decomp");
+            var outuptFile = File.Create(@"D:\Users\Kirito\Desktop\compressedBlob2.bin.decomp");
             _output.Position = 0;
             _output.CopyTo(outuptFile);
             outuptFile.Close();
@@ -172,15 +178,83 @@ namespace SlimeMoriMoriCompression
                     break;
                 case 4:
                     // 8098B3E
+                    // -> 8098C6C
+                    Fun_8098C6C(br, uncompressedLength, readValueFunc);
                     break;
                 default:
                     // 8098C8C
+                    Fun_8098C8C(br, uncompressedLength, readValueFunc);
                     break;
             }
 
             // Label 8098B42
             var upper3 = significant >> 5;
             // TODO
+        }
+
+        static void Fun_8098C8C(BinaryReaderX br, int uncompressedLength, Func<BinaryReaderX, byte> readValueFunc)
+        {
+            // Read 2 codes
+            _unkValue1 = 1;
+            _code1 = (byte)(br.ReadBits<byte>(4) + 1);
+            _unkValue2 = (short)((1 << _code1) + _unkValue1);
+            _code2 = (byte)(br.ReadBits<byte>(4) + 1);
+
+            while (_output.Length < uncompressedLength)
+            {
+                var matchLength = 0;
+                var displacement = 0;
+
+                var value0 = br.ReadBits<byte>(2);
+                if (value0 < 2) // cmp value0, #2 -> bcc
+                {
+                    // CC4
+                    displacement=GetDisplacement(br, value0);
+                    matchLength = br.ReadBits<byte>(6) + 3;
+
+                    // Goto EC4
+                }
+                else
+                {
+                    if (value0 == 2)
+                    {
+                        // CDC
+                        matchLength = br.ReadBits<byte>(6) + 1;
+                        for (var i = 0; i < matchLength; i++)
+                            _output.WriteByte(readValueFunc(br));
+
+                        continue;
+                    }
+                    else  // value0 == 3
+                    {
+                        // CA4
+                        matchLength = br.ReadBits<byte>(6)+1;
+                        displacement = 1;
+                        _output.WriteByte(br.ReadBits<byte>(8));// read static 8 bit; we don't read a huffman value here
+
+                        // Goto EC4
+                    }
+                }
+
+                // EC4
+                for (var i = 0; i < matchLength; i++)
+                {
+                    var position = _output.Position;
+
+                    _output.Position = position - displacement;
+                    var matchValue = (byte)_output.ReadByte();
+
+                    _output.Position = position;
+                    _output.WriteByte(matchValue);
+                }
+            }
+        }
+
+        static void Fun_8098C6C(BinaryReaderX br, int uncompressedLength, Func<BinaryReaderX, byte> readValueFunc)
+        {
+            // Read values n times
+            while (_output.Length < uncompressedLength)
+                _output.WriteByte(readValueFunc(br));
         }
 
         static void Fun_8098D54(BinaryReaderX br, int uncompressedLength, Func<BinaryReaderX, byte> readValueFunc, int huffmanBits)
@@ -239,16 +313,6 @@ namespace SlimeMoriMoriCompression
                             {
                                 // Read 1 byte
                                 _output.WriteByte(readValueFunc(br));
-                                //value0 = readValueFunc(br);
-                                //if ((_output.Position & 0x1) == 0)
-                                ////{
-                                ////    // 8098DD0
-                                ////    _output.WriteByte((byte)huffmanBits);       // TODO: ??? r10 should hold the huffmanBit number; But we write it in the output?
-                                //    _output.WriteByte(value0);
-                                //}
-
-                                // 8098DD6
-                                //huffmanBits = value0;
                             }
 
                             continue;
@@ -258,6 +322,7 @@ namespace SlimeMoriMoriCompression
                     {
                         // 8098D72
                         displacement = GetDisplacement(br, value0);
+
                         matchLength = br.ReadBits<byte>(4) + 3;
                         // Goto 8098EC4
                     }
@@ -273,105 +338,11 @@ namespace SlimeMoriMoriCompression
                         _output.Position = position;
                         _output.WriteByte(matchValue);
                     }
-
-                    //// Label 8098EC4
-                    //if (displacement == 1)
-                    //{
-                    //    // F2E
-                    //}
-                    //else
-                    //{
-                    //    if ((displacement & 0x1) == 1)
-                    //    {
-                    //        // F00
-                    //        var windowPosition = _output.Position - displacement;
-                    //        if ((windowPosition & 0x1) == 0)
-                    //        {
-                    //            // F06
-                    //            displacement--;
-
-                    //            var position = _output.Position;
-
-                    //            _output.Position = _output.Position - displacement;
-                    //            var matchValue = (byte)_output.ReadByte();
-                    //            var matchValue2 = (byte)_output.ReadByte();
-
-                    //            _output.Position = position + 1;
-                    //            matchLength--;
-                    //            // Goto F2A
-                    //        }
-
-                    //        if (matchLength != 0)
-                    //        {
-                    //            // F12
-                    //            _output.Position--;
-                    //            displacement -= 2;
-                    //        }
-
-                    //        // Label F2A
-                    //    }
-                    //    else
-                    //    {
-                    //        var windowPosition = _output.Position - displacement;
-                    //        if ((windowPosition & 0x1) == 1)
-                    //        {
-                    //            // ED8
-                    //            displacement--;
-
-                    //            var position = _output.Position;
-
-                    //            _output.Position = _output.Position - displacement;
-                    //            var matchValue = (byte)_output.ReadByte();
-                    //            var matchValue2 = (byte)_output.ReadByte();
-
-                    //            _output.Position = position + 1;
-                    //            _output.WriteByte((byte)huffmanBits);
-                    //            _output.WriteByte(matchValue2);
-
-                    //            matchLength--;
-                    //        }
-                    //        else
-                    //        {
-                    //            // EEA
-                    //            byte matchValue2;
-                    //            do
-                    //            {
-                    //                displacement -= 2;
-
-                    //                var position = _output.Position;
-
-                    //                _output.Position = _output.Position - displacement;
-                    //                var matchValue = (byte) _output.ReadByte();
-                    //                matchValue2 = (byte) _output.ReadByte();
-
-                    //                _output.Position = position + 2;
-                    //                _output.WriteByte(matchValue);
-                    //                _output.WriteByte(matchValue2);
-
-                    //                matchLength -= 2;
-                    //            } while (matchLength > 0);
-
-                    //            // EF6
-
-                    //            huffmanBits = matchValue2;
-                    //        }
-
-                    //        // EFC
-                    //    }
-                    //}
                 }
                 else
                 {
                     // 8098DDE
                     _output.WriteByte(readValueFunc(br));
-                    //if ((_output.Position & 0x1) == 0)
-                    //{
-                    //    // 8098DE8
-                    //    _output.WriteByte(value0);
-                    //}
-
-                    //// 8098DEE
-                    //huffmanBits = value0;
                 }
             }
         }

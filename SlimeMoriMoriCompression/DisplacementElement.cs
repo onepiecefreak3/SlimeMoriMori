@@ -12,7 +12,7 @@ namespace SlimeMoriMoriCompression
         public DisplacementElement(byte readBits, short dispalcementStart)
         {
             ReadBits = readBits;
-            DisplacementStart = DisplacementStart;
+            DisplacementStart = dispalcementStart;
         }
     }
 }

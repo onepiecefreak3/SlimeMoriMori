@@ -25,18 +25,28 @@ namespace SlimeMoriMoriCompression
             switch (_identByte & 0x7)
             {
                 case 1:
+                    // TODO: Implement mode 1
+                    throw new NotImplementedException();
                     break;
-                case 2:
+                case 2: // Extended LZ
                     SetupDisplacementTable(7);
-                    DecodeByMode(output, uncompressedSize, 1, 3, 4, 3);
+                    DecodeMode2Or3(output, uncompressedSize, 1, 3, 4, 3);
                     break;
-                case 3:
+                case 3: // LZ
                     SetupDisplacementTable(3);
-                    DecodeByMode(output, uncompressedSize, 2, 2, 3, 2);
+                    DecodeMode2Or3(output, uncompressedSize, 2, 2, 3, 2);
                     break;
-                case 4:
+                case 4: // No further compression
+                    while (output.Length < uncompressedSize)
+                        output.WriteByte(_readValueFunc());
+                    break;
+                default: // LZ+RLE
+                    SetupDisplacementTable(2);
+                    DecodeMode5(output, uncompressedSize);
                     break;
             }
+
+            // TODO: Implement usage of upper 3 bits in identByte
         }
 
         private void SetupHuffman()
@@ -65,7 +75,7 @@ namespace SlimeMoriMoriCompression
             }
         }
 
-        private void DecodeByMode(Stream output, int uncompressedSize, int bytesToRead, int dispBitCount, int lengthBitCount, int minLength)
+        private void DecodeMode2Or3(Stream output, int uncompressedSize, int bytesToRead, int dispBitCount, int lengthBitCount, int minLength)
         {
             while (output.Length < uncompressedSize)
             {
@@ -79,7 +89,7 @@ namespace SlimeMoriMoriCompression
                     {
                         // 8098E4C
                         byte readValue;
-                        // Add 2 bit values as long as read values' LSB is set
+                        // Add lengthBitCount bit values as long as read values' LSB is set
                         // Seems to be a variable length value
                         do
                         {
@@ -93,16 +103,14 @@ namespace SlimeMoriMoriCompression
                             dispIndex = _br.ReadBits<byte>(dispBitCount);
                             displacement = GetDisplacement(dispIndex) * bytesToRead;
 
-                            matchLength = (matchLength << lengthBitCount) | (_br.ReadBits<byte>(lengthBitCount) + bytesToRead);
+                            matchLength = ((matchLength << lengthBitCount) | _br.ReadBits<byte>(lengthBitCount)) + minLength;
                             // Goto 8098EA2
                         }
                         else
                         {
                             // 8098E88
                             matchLength++;
-                            for (var i = 0; i < matchLength; i++)
-                                for (var j = 0; j < bytesToRead; j++)
-                                    output.WriteByte(_readValueFunc());
+                            ReadHuffmanValues(output,matchLength,bytesToRead);
 
                             continue;
                         }
@@ -117,26 +125,78 @@ namespace SlimeMoriMoriCompression
                     }
 
                     // Label 8098EA2
-                    for (var i = 0; i < matchLength; i++)
-                    {
-                        var position = output.Position;
-                        for (var j = 0; j < bytesToRead; j++)
-                        {
-                            output.Position = position - displacement;
-                            var matchValue = (byte)output.ReadByte();
-
-                            output.Position = position;
-                            output.WriteByte(matchValue);
-
-                            position++;
-                        }
-                    }
+                    ReadDisplacement(output, displacement, matchLength, bytesToRead);
                 }
                 else
                 {
                     // 8098E14
-                    for (var j = 0; j < bytesToRead; j++)
-                        output.WriteByte(_readValueFunc());
+                    ReadHuffmanValues(output,1,bytesToRead);
+                }
+            }
+        }
+
+        private void DecodeMode5(Stream output, int uncompressedSize)
+        {
+            while (output.Length < uncompressedSize)
+            {
+                int matchLength;
+                int displacement;
+
+                var value0 = _br.ReadBits<byte>(2);
+                if (value0 < 2) // cmp value0, #2 -> bcc
+                {
+                    // CC4
+                    displacement = GetDisplacement(value0);
+                    matchLength = _br.ReadBits<byte>(6) + 3;
+
+                    // Goto EC4
+                }
+                else
+                {
+                    if (value0 == 2)
+                    {
+                        // CDC
+                        matchLength = _br.ReadBits<byte>(6) + 1;
+                        ReadHuffmanValues(output, matchLength, 1);
+
+                        continue;
+                    }
+
+                    // value0 == 3
+                    // CA4
+                    matchLength = _br.ReadBits<byte>(6) + 1;
+                    displacement = 1;
+                    output.WriteByte(_br.ReadBits<byte>(8));// read static 8 bit; we don't read a huffman value here
+
+                    // Goto EC4
+                }
+
+                // EC4
+                ReadDisplacement(output, displacement, matchLength, 1);
+            }
+        }
+
+        private void ReadHuffmanValues(Stream output, int count, int bytesToRead)
+        {
+            for (var i = 0; i < count; i++)
+                for (var j = 0; j < bytesToRead; j++)
+                    output.WriteByte(_readValueFunc());
+        }
+
+        private void ReadDisplacement(Stream output, int displacement, int matchLength, int bytesToRead)
+        {
+            for (var i = 0; i < matchLength; i++)
+            {
+                var position = output.Position;
+                for (var j = 0; j < bytesToRead; j++)
+                {
+                    output.Position = position - displacement;
+                    var matchValue = (byte)output.ReadByte();
+
+                    output.Position = position;
+                    output.WriteByte(matchValue);
+
+                    position++;
                 }
             }
         }
@@ -144,14 +204,14 @@ namespace SlimeMoriMoriCompression
         private void SetupDisplacementTable(int displacementTableCount)
         {
             _displacementTable = new DisplacementElement[displacementTableCount];
-            for (int i = 0; i < displacementTableCount; i++)
+            for (var i = 0; i < displacementTableCount; i++)
             {
                 if (i == 0)
-                    _displacementTable[0] = new DisplacementElement(_br.ReadBits<byte>(4), 1);
+                    _displacementTable[0] = new DisplacementElement((byte)(_br.ReadBits<int>(4) + 1), 1);
                 else
                 {
                     var newDisplacementStart = (1 << _displacementTable[i - 1].ReadBits) + _displacementTable[i - 1].DisplacementStart;
-                    _displacementTable[i] = new DisplacementElement(_br.ReadBits<byte>(4), (short)newDisplacementStart);
+                    _displacementTable[i] = new DisplacementElement((byte)(_br.ReadBits<int>(4) + 1), (short)newDisplacementStart);
                 }
             }
         }
