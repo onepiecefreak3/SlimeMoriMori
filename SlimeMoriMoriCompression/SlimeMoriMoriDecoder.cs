@@ -25,14 +25,14 @@ namespace SlimeMoriMoriCompression
             switch (_identByte & 0x7)
             {
                 case 1:
-                    // TODO: Implement mode 1
-                    throw new NotImplementedException();
+                    SetupDisplacementTable(4);
+                    DecodeMode1(output, uncompressedSize);
                     break;
-                case 2: // Extended LZ
+                case 2: // LZ 1 byte
                     SetupDisplacementTable(7);
                     DecodeMode2Or3(output, uncompressedSize, 1, 3, 4, 3);
                     break;
-                case 3: // LZ
+                case 3: // LZ 2 byte
                     SetupDisplacementTable(3);
                     DecodeMode2Or3(output, uncompressedSize, 2, 2, 3, 2);
                     break;
@@ -47,6 +47,23 @@ namespace SlimeMoriMoriCompression
             }
 
             // TODO: Implement usage of upper 3 bits in identByte
+            // Deobfuscation
+            switch (_identByte >> 5)
+            {
+                case 1: // Nibble mangling
+                    output.Position = 0;
+                    DeobfuscateMode1(output, 0);
+                    break;
+                case 2:
+                    throw new NotImplementedException();
+                    break;
+                case 3:
+                    throw new NotImplementedException();
+                    break;
+                case 4:
+                    throw new NotImplementedException();
+                    break;
+            }
         }
 
         private void SetupHuffman()
@@ -72,6 +89,24 @@ namespace SlimeMoriMoriCompression
                 default:
                     _readValueFunc = () => _br.ReadBits<byte>(8);
                     break;
+            }
+        }
+
+        private void DecodeMode1(Stream output, int uncompressedSize)
+        {
+            while (output.Length < uncompressedSize)
+            {
+                if (_br.ReadBit())
+                {
+                    var displacement = GetDisplacement(_br.ReadBits<byte>(2));
+                    var matchLength = _br.ReadBits<byte>(4) + 3;
+
+                    ReadDisplacement(output, displacement, matchLength, 1);
+                }
+                else
+                {
+                    output.WriteByte(_readValueFunc());
+                }
             }
         }
 
@@ -110,7 +145,7 @@ namespace SlimeMoriMoriCompression
                         {
                             // 8098E88
                             matchLength++;
-                            ReadHuffmanValues(output,matchLength,bytesToRead);
+                            ReadHuffmanValues(output, matchLength, bytesToRead);
 
                             continue;
                         }
@@ -130,7 +165,7 @@ namespace SlimeMoriMoriCompression
                 else
                 {
                     // 8098E14
-                    ReadHuffmanValues(output,1,bytesToRead);
+                    ReadHuffmanValues(output, 1, bytesToRead);
                 }
             }
         }
@@ -220,6 +255,27 @@ namespace SlimeMoriMoriCompression
         {
             return _br.ReadBits<int>(_displacementTable[dispIndex].ReadBits) +
                     _displacementTable[dispIndex].DisplacementStart;
+        }
+
+        private void DeobfuscateMode1(Stream output, int seed)
+        {
+            while (output.Position < output.Length)
+            {
+                var byte2 = output.ReadByte();
+                var byte1 = output.ReadByte();
+
+                var nibble2 = (seed + (byte2 >> 4)) & 0xF;
+                var nibble1 = (nibble2 + (byte2 & 0xF)) & 0xF;
+                var byte2New = (nibble2 << 4) | nibble1;
+
+                var nibble4 = (nibble1 + (byte1 >> 4)) & 0xF;
+                var nibble3 = seed = (nibble4 + (byte1 & 0xF)) & 0xF;
+                var byte1New = (nibble4 << 4) | nibble3;
+
+                output.Position -= 2;
+                output.WriteByte((byte)byte2New);
+                output.WriteByte((byte)byte1New);
+            }
         }
     }
 }

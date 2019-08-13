@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.IO;
 using System.Linq.Expressions;
 using Komponent.IO;
@@ -27,7 +28,9 @@ namespace SlimeMoriMoriCompression
         static void Main(string[] args)
         {
             _output = new MemoryStream();
-            var file = File.OpenRead(@"D:\Users\Kirito\Desktop\compressedBlob3.bin");
+            var file = File.Open(@"D:\Users\Kirito\Desktop\compressedBlobObf.bin", FileMode.Open);
+
+            ObfuscateMode1(file, 0);
 
             //var decoder = new SlimeMoriMoriDecoder();
             //decoder.Decode(file, _output);
@@ -87,7 +90,7 @@ namespace SlimeMoriMoriCompression
 
                 // Label 8098B0E
                 // store r5 in r9; That effectively works as a delegate now, which describes how to read a value later on
-                ReadData(br, table, significant, magicValue >> 8, readValueFunc, huffmanBits);
+                ReadData(br, table, significant, magicValue >> 8, readValueFunc);
             }
 
             var outuptFile = File.Create(@"D:\Users\Kirito\Desktop\compressedBlob2.bin.decomp");
@@ -156,7 +159,7 @@ namespace SlimeMoriMoriCompression
             return table;
         }
 
-        static void ReadData(BinaryReaderX br, byte[] table, byte significant, int uncompressedLength, Func<BinaryReaderX, byte> readValueFunc, int huffmanBits)
+        static void ReadData(BinaryReaderX br, byte[] table, byte significant, int uncompressedLength, Func<BinaryReaderX, byte> readValueFunc)
         {
             var type = significant & 0x7;
             switch (type)
@@ -164,12 +167,12 @@ namespace SlimeMoriMoriCompression
                 case 1:
                     // 8098B2C
                     // -> 8098D02
-                    //Fun_8098D02(br, table);
+                    Fun_8098D02(br, uncompressedLength, readValueFunc);
                     break;
                 case 2:
                     // 8098B32
                     // -> 8098D54
-                    Fun_8098D54(br, uncompressedLength, readValueFunc, huffmanBits);
+                    Fun_8098D54(br, uncompressedLength, readValueFunc);
                     break;
                 case 3:
                     // 8098B38
@@ -189,7 +192,109 @@ namespace SlimeMoriMoriCompression
 
             // Label 8098B42
             var upper3 = significant >> 5;
-            // TODO
+            switch (upper3)
+            {
+                case 1:
+                    // F80
+                    br.BaseStream.Position = 0;
+                    Fun_08098F80(br.BaseStream, 0);
+                    break;
+                case 2:
+                    throw new NotImplementedException();
+                    break;
+                case 3:
+                    throw new NotImplementedException();
+                    break;
+                case 4:
+                    throw new NotImplementedException();
+                    break;
+            }
+        }
+
+        // Deobfuscate mode 1
+        static void Fun_08098F80(Stream output, int seed)
+        {
+            while (output.Position < output.Length)
+            {
+                var byte2 = output.ReadByte();
+                var byte1 = output.ReadByte();
+
+                var nibble2 = (seed + (byte2 >> 4)) & 0xF;
+                var nibble1 = (nibble2 + (byte2 & 0xF)) & 0xF;
+                var byte2New = (nibble2 << 4) | nibble1;
+
+                var nibble4 = (nibble1 + (byte1 >> 4)) & 0xF;
+                var nibble3 = seed = (nibble4 + (byte1 & 0xF)) & 0xF;
+                var byte1New = (nibble4 << 4) | nibble3;
+
+                output.Position -= 2;
+                output.WriteByte((byte)byte2New);
+                output.WriteByte((byte)byte1New);
+            }
+        }
+
+        static void ObfuscateMode1(Stream output, int seed)
+        {
+            while (output.Position < output.Length)
+            {
+                var byte2 = output.ReadByte();
+                var byte1 = output.ReadByte();
+
+                var nibble4 = ((byte1 >> 4) - (byte2 & 0xF)) & 0xF;
+                var nibble3 = ((byte1 & 0xF) - (byte1 >> 4)) & 0xF;
+                var byte2New = (nibble4 << 4) | nibble3;
+
+                var nibble2 = ((byte2 >> 4) - seed) & 0xF;
+                var nibble1 = ((byte2 & 0xF) - (byte2 >> 4)) & 0xF;
+                var byte1New = (nibble2 << 4) | nibble1;
+
+                seed = byte1 & 0xF;
+
+                output.Position -= 2;
+                output.WriteByte((byte)byte2New);
+                output.WriteByte((byte)byte1New);
+            }
+        }
+
+        static void Fun_8098D02(BinaryReaderX br, int uncompressedLength, Func<BinaryReaderX, byte> readValueFunc)
+        {
+            // Read 4 codes
+            _unkValue1 = 1;
+            _code1 = (byte)(br.ReadBits<byte>(4) + 1);
+            _unkValue2 = (short)((1 << _code1) + _unkValue1);
+            _code2 = (byte)(br.ReadBits<byte>(4) + 1);
+            _unkValue3 = (short)((1 << _code2) + _unkValue2);
+            _code3 = (byte)(br.ReadBits<byte>(4) + 1);
+            _unkValue4 = (short)((1 << _code3) + _unkValue3);
+            _code4 = (byte)(br.ReadBits<byte>(4) + 1);
+
+            while (_output.Length < uncompressedLength)
+            {
+                if (br.ReadBit())
+                {
+                    // D16
+                    var displacement = GetDisplacement(br, br.ReadBits<byte>(2));
+                    var matchLength = br.ReadBits<byte>(4) + 3;
+                    // Goto EC4
+
+                    // EC4
+                    for (var i = 0; i < matchLength; i++)
+                    {
+                        var position = _output.Position;
+
+                        _output.Position = position - displacement;
+                        var matchValue = (byte)_output.ReadByte();
+
+                        _output.Position = position;
+                        _output.WriteByte(matchValue);
+                    }
+                }
+                else
+                {
+                    // D34
+                    _output.WriteByte(readValueFunc(br));
+                }
+            }
         }
 
         static void Fun_8098C8C(BinaryReaderX br, int uncompressedLength, Func<BinaryReaderX, byte> readValueFunc)
@@ -209,7 +314,7 @@ namespace SlimeMoriMoriCompression
                 if (value0 < 2) // cmp value0, #2 -> bcc
                 {
                     // CC4
-                    displacement=GetDisplacement(br, value0);
+                    displacement = GetDisplacement(br, value0);
                     matchLength = br.ReadBits<byte>(6) + 3;
 
                     // Goto EC4
@@ -228,7 +333,7 @@ namespace SlimeMoriMoriCompression
                     else  // value0 == 3
                     {
                         // CA4
-                        matchLength = br.ReadBits<byte>(6)+1;
+                        matchLength = br.ReadBits<byte>(6) + 1;
                         displacement = 1;
                         _output.WriteByte(br.ReadBits<byte>(8));// read static 8 bit; we don't read a huffman value here
 
@@ -257,7 +362,7 @@ namespace SlimeMoriMoriCompression
                 _output.WriteByte(readValueFunc(br));
         }
 
-        static void Fun_8098D54(BinaryReaderX br, int uncompressedLength, Func<BinaryReaderX, byte> readValueFunc, int huffmanBits)
+        static void Fun_8098D54(BinaryReaderX br, int uncompressedLength, Func<BinaryReaderX, byte> readValueFunc)
         {
             // Read 7 codes
             _unkValue1 = 1;
