@@ -30,7 +30,7 @@ namespace SlimeMoriMoriCompression
             _output = new MemoryStream();
             var file = File.Open(@"D:\Users\Kirito\Desktop\compressedBlobObf.bin", FileMode.Open);
 
-            ObfuscateMode1(file, 0);
+            ObfuscateMode4(file, 0, 0);
 
             //var decoder = new SlimeMoriMoriDecoder();
             //decoder.Decode(file, _output);
@@ -195,19 +195,79 @@ namespace SlimeMoriMoriCompression
             switch (upper3)
             {
                 case 1:
-                    // F80
+                    // B5C
+                    // -> F80
                     br.BaseStream.Position = 0;
                     Fun_08098F80(br.BaseStream, 0);
                     break;
                 case 2:
-                    throw new NotImplementedException();
+                    // B62
+                    // -> FB0
+                    br.BaseStream.Position = 0;
+                    Fun_08098FB0(br.BaseStream, 0);
                     break;
                 case 3:
-                    throw new NotImplementedException();
+                    // B68
+                    // -> FCC
+                    br.BaseStream.Position = 0;
+                    Fun_08098FCC(br.BaseStream, 0);
                     break;
                 case 4:
-                    throw new NotImplementedException();
+                    // B6E
+                    // -> FDC
+                    br.BaseStream.Position = 0;
+                    Fun_08098FDC(br.BaseStream, 0, 0);
                     break;
+            }
+        }
+
+        // Deobfuscate mode 4
+        static void Fun_08098FDC(Stream output, int seed, int seed2)
+        {
+            while (output.Position < output.Length)
+            {
+                var byte2 = output.ReadByte();
+                var byte1 = output.ReadByte();
+
+                var byte2New = seed = (byte2 + seed) & 0xFF;
+                var byte1New = seed2 = (byte1 + seed2) & 0xFF;
+
+                output.Position -= 2;
+                output.WriteByte((byte)byte2New);
+                output.WriteByte((byte)byte1New);
+            }
+        }
+
+        // Deobfuscate mode 3
+        static void Fun_08098FCC(Stream output, int seed)
+        {
+            while (output.Position < output.Length)
+            {
+                var short1 = (output.ReadByte() << 8) | output.ReadByte();
+
+                var short1New = short1 + seed;
+                seed = short1;
+
+                output.Position -= 2;
+                output.WriteByte((byte)(short1New >> 8));
+                output.WriteByte((byte)short1New);
+            }
+        }
+
+        // Deobfuscate mode 2
+        static void Fun_08098FB0(Stream output, int seed)
+        {
+            while (output.Position < output.Length)
+            {
+                var byte2 = output.ReadByte();
+                var byte1 = output.ReadByte();
+
+                var byte1New = byte2 + seed;
+                var byte2New = seed = byte1 + byte1New;
+
+                output.Position -= 2;
+                output.WriteByte((byte)byte1New);
+                output.WriteByte((byte)byte2New);
             }
         }
 
@@ -226,6 +286,56 @@ namespace SlimeMoriMoriCompression
                 var nibble4 = (nibble1 + (byte1 >> 4)) & 0xF;
                 var nibble3 = seed = (nibble4 + (byte1 & 0xF)) & 0xF;
                 var byte1New = (nibble4 << 4) | nibble3;
+
+                output.Position -= 2;
+                output.WriteByte((byte)byte2New);
+                output.WriteByte((byte)byte1New);
+            }
+        }
+
+        static void ObfuscateMode4(Stream output, int seed, int seed2)
+        {
+            while (output.Position < output.Length)
+            {
+                var byte2 = output.ReadByte();
+                var byte1 = output.ReadByte();
+
+                var byte1New = byte1 - seed;
+                var byte2New = byte2 - seed2;
+                seed = byte1;
+                seed2 = byte2;
+
+                output.Position -= 2;
+                output.WriteByte((byte)byte2New);
+                output.WriteByte((byte)byte1New);
+            }
+        }
+
+        static void ObfuscateMode3(Stream output, int seed)
+        {
+            while (output.Position < output.Length)
+            {
+                var short1 = (output.ReadByte() << 8) | output.ReadByte();
+
+                var short1New = short1 - seed;
+                seed = short1;
+
+                output.Position -= 2;
+                output.WriteByte((byte)(short1New >> 8));
+                output.WriteByte((byte)short1New);
+            }
+        }
+
+        static void ObfuscateMode2(Stream output, int seed)
+        {
+            while (output.Position < output.Length)
+            {
+                var byte2 = output.ReadByte();
+                var byte1 = output.ReadByte();
+
+                var byte1New = byte1 - byte2;
+                var byte2New = byte2 - seed;
+                seed = byte1;
 
                 output.Position -= 2;
                 output.WriteByte((byte)byte2New);

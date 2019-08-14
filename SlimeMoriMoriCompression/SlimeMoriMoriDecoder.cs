@@ -46,22 +46,24 @@ namespace SlimeMoriMoriCompression
                     break;
             }
 
-            // TODO: Implement usage of upper 3 bits in identByte
             // Deobfuscation
             switch (_identByte >> 5)
             {
-                case 1: // Nibble mangling
+                case 1:
                     output.Position = 0;
-                    DeobfuscateMode1(output, 0);
+                    DeobfuscateMode1(output);
                     break;
                 case 2:
-                    throw new NotImplementedException();
+                    output.Position = 0;
+                    DeobfuscateMode2(output);
                     break;
                 case 3:
-                    throw new NotImplementedException();
+                    output.Position = 0;
+                    DeobfuscateMode3(output);
                     break;
                 case 4:
-                    throw new NotImplementedException();
+                    output.Position = 0;
+                    DeobfuscateMode4(output);
                     break;
             }
         }
@@ -257,8 +259,9 @@ namespace SlimeMoriMoriCompression
                     _displacementTable[dispIndex].DisplacementStart;
         }
 
-        private void DeobfuscateMode1(Stream output, int seed)
+        private void DeobfuscateMode1(Stream output)
         {
+            var seed = 0;
             while (output.Position < output.Length)
             {
                 var byte2 = output.ReadByte();
@@ -271,6 +274,57 @@ namespace SlimeMoriMoriCompression
                 var nibble4 = (nibble1 + (byte1 >> 4)) & 0xF;
                 var nibble3 = seed = (nibble4 + (byte1 & 0xF)) & 0xF;
                 var byte1New = (nibble4 << 4) | nibble3;
+
+                output.Position -= 2;
+                output.WriteByte((byte)byte2New);
+                output.WriteByte((byte)byte1New);
+            }
+        }
+
+        private void DeobfuscateMode2(Stream output)
+        {
+            var seed = 0;
+            while (output.Position < output.Length)
+            {
+                var byte2 = output.ReadByte();
+                var byte1 = output.ReadByte();
+
+                var byte2New = byte2 + seed;
+                var byte1New = seed = byte1 + byte2New;
+
+                output.Position -= 2;
+                output.WriteByte((byte)byte2New);
+                output.WriteByte((byte)byte1New);
+            }
+        }
+
+        private void DeobfuscateMode3(Stream output)
+        {
+            var seed = 0;
+            while (output.Position < output.Length)
+            {
+                var short1 = (output.ReadByte() << 8) | output.ReadByte();
+
+                var short1New = short1 + seed;
+                seed = short1;
+
+                output.Position -= 2;
+                output.WriteByte((byte)(short1New >> 8));
+                output.WriteByte((byte)short1New);
+            }
+        }
+
+        private void DeobfuscateMode4(Stream output)
+        {
+            var seed = 0;
+            var seed2 = 0;
+            while (output.Position < output.Length)
+            {
+                var byte2 = output.ReadByte();
+                var byte1 = output.ReadByte();
+
+                var byte2New = seed = (byte2 + seed) & 0xFF;
+                var byte1New = seed2 = (byte1 + seed2) & 0xFF;
 
                 output.Position -= 2;
                 output.WriteByte((byte)byte2New);
