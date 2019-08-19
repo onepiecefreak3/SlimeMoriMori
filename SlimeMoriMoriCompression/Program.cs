@@ -28,9 +28,7 @@ namespace SlimeMoriMoriCompression
         static void Main(string[] args)
         {
             _output = new MemoryStream();
-            var file = File.Open(@"D:\Users\Kirito\Desktop\compressedBlobObf.bin", FileMode.Open);
-
-            ObfuscateMode4(file, 0, 0);
+            var file = File.Open(@"D:\Users\Kirito\Desktop\compressedBlob1.bin.decomp.comp", FileMode.Open);
 
             //var decoder = new SlimeMoriMoriDecoder();
             //decoder.Decode(file, _output);
@@ -46,11 +44,10 @@ namespace SlimeMoriMoriCompression
             {
                 var magicValue = br.ReadInt32();
                 var significant = br.ReadBits<byte>(8);
-                int huffmanBits = 0;
 
                 // Bit 3 and 4 declare if and how the huffman tree table is initialized
                 byte[] table = null;
-                Func<BinaryReaderX, byte> readValueFunc = null;
+                Func<BinaryReaderX, byte> readValueFunc;
                 var what = (significant >> 3) & 0x3;
                 switch (what)
                 {
@@ -60,8 +57,7 @@ namespace SlimeMoriMoriCompression
                         // store 4 in r4
                         // Goto 8098B0A
                         // Goto 8098B84
-                        huffmanBits = 4;
-                        table = LoadTable(br, huffmanBits);  // Init table of size 16 * 4
+                        table = LoadTable(br, 4);  // Init table of size 16 * 4
                         readValueFunc = internalBr =>
                         {
                             var nibble1 = Fun_8098C1A(internalBr, table) << 4;
@@ -75,8 +71,7 @@ namespace SlimeMoriMoriCompression
                         // store 8098C13 in r5  // Method for reading value from tree
                         // store 8 in r4
                         // Goto 8098B84
-                        huffmanBits = 8;
-                        table = LoadTable(br, huffmanBits);  // Init table of size 256 * 4
+                        table = LoadTable(br, 8);  // Init table of size 256 * 4
                         readValueFunc = internalBr => Fun_8098C1A(internalBr, table);
                         // Goto 8098B0E
                         break;
@@ -93,7 +88,7 @@ namespace SlimeMoriMoriCompression
                 ReadData(br, table, significant, magicValue >> 8, readValueFunc);
             }
 
-            var outuptFile = File.Create(@"D:\Users\Kirito\Desktop\compressedBlob2.bin.decomp");
+            var outuptFile = File.Create(@"D:\Users\Kirito\Desktop\compressedBlob1.bin.decomp.comp.decomp");
             _output.Position = 0;
             _output.CopyTo(outuptFile);
             outuptFile.Close();
